@@ -1,0 +1,9 @@
+
+Input for minimap2
+-------------------
+1. makeFA.sh - makes FASTA files from F/R primers from Chan lab probe file
+2. separateGenomeFA.sh - makes FASTA files for each sequence in the GISAID download fa file
+
+Testing minimap2
+-----------------
+mm2_pairwisealign.sh - uses minimap2 to run pairwise seq alignment of probe seqs to individual viral genome isolates
