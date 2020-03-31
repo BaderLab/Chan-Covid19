@@ -1,7 +1,7 @@
 # BLAST Pairwise Sequence Alignment 
 
 ## Description
-run_blast.sh is a script that runs blastn on an input query.fa (probe) against n subject sequences (viral genomes).
+run_blast.sh runs blastn on an input query.fa (probe) against n subject sequences (viral genomes).
 
 ## Input
  * probe name (i.e. Egene)
