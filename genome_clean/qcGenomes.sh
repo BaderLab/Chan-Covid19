@@ -1,13 +1,13 @@
 #!/bin/bash
 
-genomeFile=/home/project_resources/data/genomes/gisaid_cov2020_sequences_hCoV19_HumanHost_Complete_LowCovExcl_200403.fasta
+#genomeFile=/home/project_resources/data/genomes/gisaid_cov2020_sequences_hCoV19_HumanHost_Complete_LowCovExcl_200403.fasta
+#genomeFile=/home/project_resources/data/genomes/GISAID/merged_AllIsolates_30278Only.fa
+genomeFile=/home/project_resources/data/genomes/NCBI/NCBI_completeSeq_200407.fasta
 
-outDir=~/genomeQC
-
-
+outRoot="/home/spai/genomeQC"
 dt=`date '+%y%m%d'` 
-mkdir $dt
-outDir=${outDir}/${dt}
+outDir=${outRoot}/NCBI_${dt}
+mkdir -p $outDir
 
 # count N and gaps
 baseF=`basename $genomeFile .fasta`
