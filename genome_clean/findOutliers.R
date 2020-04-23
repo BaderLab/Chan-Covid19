@@ -1,15 +1,16 @@
 # find seqs with outlier num gaps
 args <- commandArgs(TRUE)
+#inFile <- "/home/project_resources/data/genomes/GISAID/GISAID_humanOnly_complete_hiCovNoLowCov_200420.fasta" #args[1]
 inFile <- args[1]
+
+#inFile <- "/home/spai/genomeQC/NCBI_completeSeq_200420_200420/NCBI_completeSeq_200420_countN_200420.txt"
 
 dt <- format(Sys.Date(),"%y%m%d")
 logFile <- sprintf("%s_%s.log",inFile,dt)
 
 sink(logFile,split=TRUE)
 tryCatch({
-dat <- read.delim(inFile,sep="\t",h=F,as.is=T)
-colnames(dat) <- c("seqname","seqlen","numA","numC","numG","numT",
-	"numN","numGaps")
+dat <- read.delim(inFile,sep="\t",h=T,as.is=T)
 
 nm <- strsplit(dat$seqname,"\\/")
 ctry <- unlist(lapply(nm,function(x) x[2]))
@@ -29,17 +30,23 @@ tryCatch({
 	hist(dat$numN,n=100,main="num N")
 	qtl <- quantile(dat$numN, c(0.25,0.5,0.75,0.8,0.9,0.95,0.99))
 	abline(v=qtl,lty=3,col='red')
+	print(summary(dat$numN))
 	print(qtl)
+
+	failID  <- 1
 
 	nthresh <- 550
 	idx <- which(dat$numN > nthresh) # top 5% worst
-	write.table(dat[idx,],
-		file=sprintf("%s_top5pct_numN_%s.txt",inFile,dt),
-		sep="\t",col=T,row=F,quote=F)
-	# violator 1 - too many N's
-	write.table(dat[idx,1],
-		file=sprintf("%s/fail_%s_NViolate_IDs_%s.txt",outDir,baseF,dt),
-		sep="\t",col=F,row=F,quote=F)
+	if (length(idx)>0) {
+		write.table(dat[idx,],
+			file=sprintf("%s_top5pct_numN_%s.txt",inFile,dt),
+			sep="\t",col=T,row=F,quote=F)
+		# violator 1 - too many N's
+		message(sprintf("FAIL: N > 550: %i sequences", length(idx)))
+		write.table(dat[idx,1],
+			file=sprintf("%s/fail_%s_NViolate_IDs_%s.txt",outDir,baseF,dt),
+			sep="\t",col=F,row=F,quote=F)
+	}
 
 	cat("Gaps\n")
 	hist(dat$numGaps,n=100,main="num Gaps")
@@ -54,22 +61,24 @@ tryCatch({
 
 	# violator 2 - too many gaps
 	idx <- which(dat$numGaps > 10) # top 5% worst
-	write.table(dat[idx,],
-		file=sprintf("%s_GapViolate_%s.txt",inFile,dt),
-		sep="\t",col=T,row=F,quote=F)
-	write.table(dat[idx,1],
-		file=sprintf("%s/fail_%s_GapViolate_IDs_%s.txt",outDir,baseF,dt),
-		sep="\t",col=F,row=F,quote=F)
+	if (length(idx)>0) {
+		message(sprintf("FAIL: numGaps > 10: %i sequences", length(idx)))
+		write.table(dat[idx,],
+			file=sprintf("%s_GapViolate_%s.txt",inFile,dt),
+			sep="\t",col=T,row=F,quote=F)
+		write.table(dat[idx,1],
+			file=sprintf("%s/fail_%s_GapViolate_IDs_%s.txt",outDir,baseF,dt),
+			sep="\t",col=F,row=F,quote=F)
+	}
 
 	# violator 3 - seq too long
 	idx <- which(dat$seqlen > 30000)
-	if (any(idx)) {
-		cat(sprintf("%i with seqs too long!", length(idx)))
+	if (length(idx)>0) {
+		message(sprintf("FAIL: seq length > 30kb: %i sequences", length(idx)))
 		write.table(dat[idx,1],
 			file=sprintf("%s/fail_%s_LenViolate_IDs_%s.txt",outDir,baseF,dt),
 				sep="\t",col=F,row=F,quote=F)
 	}
-
 },error=function(ex){
 	print(ex)
 },finally={
