@@ -14,11 +14,11 @@ dat$date2 <- factor(dat$date2,ordered=TRUE,labels=uq)
 
 require(ggplot2)
 dt <- format(Sys.Date(),"%y%m%d")
-pdf(sprintf("NCBI_count_%s.pdf",dt))
+pdf(sprintf("NCBI_count_%s.pdf",dt),width=13,height=6)
 tryCatch({
 	p <- ggplot(dat, aes(date2))
 	p <- p + geom_bar() + xlab("Release date") + ylab("Num genomes")
-	p <- p + ggtitle("NCBI SARS-CoV-2 genomes: Database growth")
+	p <- p + ggtitle("NCBI SARS-CoV-2 genomes: Deposition over time")
 	p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1,size=8),
 				   axis.text.y=element_text(size=15))
 	print(p)
