@@ -23,6 +23,8 @@ colnames(g2) <- c("seqname","numN_ORF")
 both <- merge(x=gisaid,y=g2,by="seqname")
 gisaid <- both
 message(sprintf("GISAID merged: %i seqs",nrow(gisaid)))
+cr <- cor.test(gisaid$numN, gisaid$numN_ORF)
+print(cr)
 
 gisaid$is_bad <- gisaid$numN_ORF > 80
 
@@ -50,6 +52,9 @@ message(sprintf("NCBI pass QC: %i seqs",nrow(n2)))
 both <- merge(x=ncbi,y=n2,by="Geo_Location")
 ncbi <- both;
 message(sprintf("NCBI merged: %i seqs",nrow(ncbi)))
+cr <- cor.test(ncbi$numN, ncbi$numN_ORF)
+print(cr)
+browser()
 
 # NCBI vs GISAID: plot country count, and colour by is_bad
 gcount <- table(gisaid$country)
