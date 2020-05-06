@@ -61,7 +61,7 @@ sequence_summary <- entrez_search(db = "nuccore",
 num_sequences <- sequence_summary$count
 
 #get all the sequences as fasta and create one fasta file.
-fname <- file.path(fasta_directory ,paste("ncbi_sars_cov2_", Sys.Date(), ".fasta", sep = ""))
+fname <- file.path(fasta_directory ,paste("ncbi_sars_cov2_", Sys.Date(), ".fa", sep = ""))
 meta_data <- c()
 for (start_rec in seq(0, num_sequences, 50)) {
 
