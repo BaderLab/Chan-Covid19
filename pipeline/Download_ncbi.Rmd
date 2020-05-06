@@ -5,6 +5,13 @@ params:
   working_dir: /home/rstudio/projects/pipeline
 ---
 
+Download the Sars-cov2 fasta file from NCBI using E-utils. (Unfortunately E-utils is separate from the NCBI virus website data.  The virus website does not support E-utils.)
+
+This URL(from the virus website): https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/virus?SeqType_s=Nucleotide&VirusLineage_ss=SARS-CoV-2,%20taxid:2697049 
+returns a different number of sequences than the NCBI E-utils resource:
+https://www.ncbi.nlm.nih.gov/nuccore/?term=sars-cov2%5BORGN%5D+OR+2697049%5BTXID%5D
+
+
 ```{r required_libraries, message=FALSE, warning=FALSE}
 if (! requireNamespace("rentrez", quietly=TRUE)) {
   install.packages("rentrez")
@@ -15,6 +22,10 @@ if (! requireNamespace("XML", quietly=TRUE)) {
 if (! requireNamespace("ggplot2", quietly=TRUE)) {
   install.packages("ggplot2")
 }
+
+library(rentrez)
+library(XML)
+library(ggplot2)
 
 working_dir <- file.path(params$working_dir)
 ```
@@ -39,6 +50,8 @@ if(!dir.exists(figures_directory)){
 ```
 
 
+Download the fasta format as well as the meta information for all the sars-cov2 genomes available though e-utils.
+
 ```{r download_ncbi_fasta}
 #get all the sequences at NCBI for SARs-cov2
 sequence_summary <- entrez_search(db = "nuccore", 
@@ -48,20 +61,20 @@ sequence_summary <- entrez_search(db = "nuccore",
 num_sequences <- sequence_summary$count
 
 #get all the sequences as fasta and create one fasta file.
-fname <- file.path(fasta_directory ,paste("sars_cov2_", Sys.Date(), ".fasta", sep = ""))
+fname <- file.path(fasta_directory ,paste("ncbi_sars_cov2_", Sys.Date(), ".fasta", sep = ""))
 meta_data <- c()
 for (start_rec in seq(0, num_sequences, 50)) {
 
-  recs <- entrez_fetch(db = "nuccore", 
+  recs <- rentrez::entrez_fetch(db = "nuccore", 
                        web_history = sequence_summary$web_history ,  
                        retstart = start_rec, retmax = 50, rettype="fasta")
-  xml <- entrez_fetch(db = "nuccore", 
+  xml <- rentrez::entrez_fetch(db = "nuccore", 
                       web_history = sequence_summary$web_history ,  
                        retstart = start_rec, retmax = 50, rettype="gb",
                       retmode = "xml")
   
   #convert the xml to dataframe
-  xml_converted <- xmlToDataFrame(xml,stringsAsFactors = FALSE)
+  xml_converted <- XML::xmlToDataFrame(xml,stringsAsFactors = FALSE)
   
   #add to metadata dataframe
   if(length(meta_data) == 0){
