@@ -1,0 +1,130 @@
+---
+title: "Download NCBI fasta"
+output: html_notebook
+params:
+  working_dir: /home/rstudio/projects/pipeline
+---
+
+```{r required_libraries, message=FALSE, warning=FALSE}
+if (! requireNamespace("rentrez", quietly=TRUE)) {
+  install.packages("rentrez")
+}
+if (! requireNamespace("XML", quietly=TRUE)) {
+  install.packages("XML")
+}
+if (! requireNamespace("ggplot2", quietly=TRUE)) {
+  install.packages("ggplot2")
+}
+
+working_dir <- file.path(params$working_dir)
+```
+
+
+```{r}
+#initialize directories
+data_directory <- file.path(working_dir,"data")
+if(!dir.exists(data_directory)){
+  dir.create(data_directory)
+}
+
+fasta_directory <- file.path(data_directory,"fasta")
+if(!dir.exists(fasta_directory )){
+  dir.create(fasta_directory )
+}
+
+figures_directory <- file.path(working_dir,"figures")
+if(!dir.exists(figures_directory)){
+  dir.create(figures_directory )
+}
+```
+
+
+```{r download_ncbi_fasta}
+#get all the sequences at NCBI for SARs-cov2
+sequence_summary <- entrez_search(db = "nuccore", 
+                                  "sars-cov2[ORGN] OR 2697049[TAXID]", 
+                                  use_history = TRUE)
+
+num_sequences <- sequence_summary$count
+
+#get all the sequences as fasta and create one fasta file.
+fname <- file.path(fasta_directory ,paste("sars_cov2_", Sys.Date(), ".fasta", sep = ""))
+meta_data <- c()
+for (start_rec in seq(0, num_sequences, 50)) {
+
+  recs <- entrez_fetch(db = "nuccore", 
+                       web_history = sequence_summary$web_history ,  
+                       retstart = start_rec, retmax = 50, rettype="fasta")
+  xml <- entrez_fetch(db = "nuccore", 
+                      web_history = sequence_summary$web_history ,  
+                       retstart = start_rec, retmax = 50, rettype="gb",
+                      retmode = "xml")
+  
+  #convert the xml to dataframe
+  xml_converted <- xmlToDataFrame(xml,stringsAsFactors = FALSE)
+  
+  #add to metadata dataframe
+  if(length(meta_data) == 0){
+    meta_data <- xml_converted
+  } else{
+    if(length(colnames(meta_data)) != length(colnames(xml_converted))){
+      missing_colnames_meta <- setdiff(colnames(xml_converted), 
+                                       colnames(meta_data))
+      missing_colnames_xml <- setdiff(colnames(meta_data), 
+                                      colnames(xml_converted))
+      if(length(missing_colnames_meta) >0){
+        for(i in 1:length(missing_colnames_meta)){
+          meta_data[,length(colnames(meta_data))+1] <- NA
+          colnames(meta_data)[ncol(meta_data)] <- missing_colnames_meta[i]
+        }
+      }
+      if(length(missing_colnames_xml) >0){
+        for(i in 1:length(missing_colnames_xml)){
+          xml_converted[,length(colnames(xml_converted))+1] <- NA
+          colnames(xml_converted)[ncol(xml_converted)] <- missing_colnames_xml[i]
+        }
+      }
+    }
+    
+    meta_data <- rbind(meta_data, xml_converted)
+  }
+  write(recs, fname,append = TRUE)
+  print(paste("wrote records to ", fname, sep = ""))
+}
+```
+
+```{r}
+
+#create a plot of data growth
+dat <- meta_data
+dt <- as.Date(meta_data$`GBSeq_update-date`,format = "%d-%B-%y")
+dat$yr <- as.integer(substr(dt,1,4))
+dat$mon <- as.integer(substr(dt,6,7))
+dat$day <- as.integer(substr(dt,9,10))
+
+idx <- order(dat$yr,dat$mon,dat$day)
+dat <- dat[idx,]
+dat$date2 <- sprintf("%s-%s-%s",dat$yr,dat$mon,dat$day)
+uq <- dat$date2[!duplicated(dat$date2)]
+dat$date2 <- factor(dat$date2,ordered=TRUE,labels=uq)
+
+dt <- format(Sys.Date(),"%y%m%d")
+
+ncbi_growth_figure <- file.path(figures_directory,sprintf("NCBI_count_%s.png",dt))
+
+png(ncbi_growth_figure,width=13,height=6)
+tryCatch({
+  p <- ggplot(dat, aes(date2))
+  p <- p + geom_bar() + xlab("Release date") + ylab("Num genomes")
+  p <- p + ggtitle("NCBI SARS-CoV-2 genomes: Deposition over time")
+  p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1,size=8),
+                 axis.text.y=element_text(size=15))
+  print(p)
+},error=function(ex) {
+  print(ex)
+},finally={
+  dev.off()
+})
+p
+```
+
