@@ -1,0 +1,10 @@
+To create the covid_bioc_docker run in the covid_bioc_docker directory:
+docker run -t covid_bioc_docker . 
+The above command will build the docker specified in the Dockerfile.  To add any libraries to the image modify the Dockerfile (check if it is a bioconductor or an R library and place it in the correct library section)
+
+To start the docker run the following command:
+(the userid is the baderlab userid and the groupid is badergroup.  This enables the rocker to write to the group directory
+launch the docker from the /home/project_resources directory) 
+docker run -e PASSWORD=covid19 --rm -d -p 8787:8787 -e HOST_DIR="$(pwd)" -e USERID=1000 -e GROUPID=1009 -v "$(pwd)":/home/rstudio/projects covid_bioc_docker
+
+
