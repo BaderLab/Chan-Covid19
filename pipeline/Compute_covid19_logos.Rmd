@@ -1,0 +1,212 @@
+---
+title: "Compute logos"
+output: html_notebook
+params:
+  working_dir: /home/rstudio/projects
+  genomes_dir: data/genomes/200713/QC/ncbi_sars_cov2_2020-07-13.fa
+  aligned_fasta: ncbi_sars_cov2_2020-07-13.fa_passQC.fa_withprobes_mafft.fa_mafftout.fa
+  probes_fasta: ProbesMar2020_revComp.fa
+  data_set: ncbi
+---
+
+```{r import_libraries, include=FALSE}
+library('Biostrings')
+library('data.table')
+library(BSgenome.Celegans.UCSC.ce2)
+library(stringr)
+library(seqinr)
+library(msa)
+library(RColorBrewer)
+library('ggseqlogo')
+library(ggplot2)
+library(reshape2)
+```
+
+```{r function_defintions, include=FALSE}
+color_palette = make_col_scheme(chars=c('A', 'C', 'G', 'T','N','H'), 
+                                cols=c('forestgreen', 'royalblue3', 'gold', 'red2', "grey66", "lightgray"),
+                                name='custom2')
+
+### Functions
+cleanDF <- function(msa_probe){
+  colnames(msa_probe) = 'seq'
+  msa_probe$name = rownames(msa_probe)
+  rownames(msa_probe) <- NULL
+  return(msa_probe)
+}
+
+remove_probe_seq <- function(consMat, probe_sequence){
+  consMat$nuc <- str_split(probe_sequence,'')[[1]]
+  for(i in 1:nrow(consMat)){
+    nuc = consMat$nuc[i]
+    consMat[i,nuc] = 0
+  }
+  consMat <- consMat[,!colnames(consMat) %in% c('nuc')]
+  return(consMat)
+}
+
+
+get_perc <- function(df, sum){
+  df$A = 100*df$A/sum
+  df$C = 100*df$C/sum
+  df$G = 100*df$G/sum
+  df$T = 100*df$T/sum
+  df$N = 100*df$N/sum
+  df$H = 100*df$H/sum
+  return(df)
+}
+
+
+get_start_end_indices <- function(data, probes_fa){
+  probes <- data[(length(data)-12):length(data)] 
+  names(probes) == rownames(probes_fa)
+  
+  probe_start_end_indices = sapply(1:length(probes), 
+                                   function(index){
+                                     aProbeSeq <- as.character(probes[[index]])
+                                     result <- as.data.frame(str_locate_all(pattern =probes_fa$seqs[index], aProbeSeq))
+                                     print('----------------------------------------')
+                                     print(paste0('index: ', index))
+                                     print(names(probes)[index])
+                                     print(probes_fa$seqs[index])
+                                     print(result)
+                                     return(result)
+                                   }, simplify = F)
+  
+  names(probe_start_end_indices) <- names(probes)
+  return(probe_start_end_indices)
+  
+}
+
+
+get_start_end_df <- function(probe_start_end_indices){
+  ### finding the coordination of aligned probes
+  probe_start_index <- lapply(probe_start_end_indices, function(x) x$start)
+  probe_end_index <- lapply(probe_start_end_indices, function(x) x$end)
+  probe_start_end_indices.df <- cbind(data.frame(unlist(probe_start_index)), 
+                                      data.frame(unlist(probe_end_index)))
+  colnames(probe_start_end_indices.df) <- c('start', 'end')
+  probe_start_end_indices.df$width = probe_start_end_indices.df$end - probe_start_end_indices.df$start
+  return(probe_start_end_indices.df)
+}
+
+
+
+get_cons_mat <- function(i, prob_names,probe_start_end_indices.df){
+  
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  print('--------------------')
+  print(a_probe_name)
+  
+  a_probe_start_index = probe_start_end_indices.df$start[i]
+  a_probe_end_index = probe_start_end_indices.df$end[i]
+  a_probe_aligned = subseq(data, start = a_probe_start_index, end = a_probe_end_index)
+  
+  ### to access the raw aligned sequences
+  a_probe_aligned_df = data.frame(a_probe_aligned)
+  a_probe_aligned_df <- cleanDF(a_probe_aligned_df)
+  
+  ### make the consensus Matrix
+  a_probe_aligned_alphabetFreq <- alphabetFrequency(a_probe_aligned)
+  a_probe_aligned_consMat <- data.frame(t(consensusMatrix(a_probe_aligned)))
+  ncol_cons_mat = ncol(a_probe_aligned_consMat)
+  colnames(a_probe_aligned_consMat)[(ncol_cons_mat-2):ncol_cons_mat] = c('h','plos','dot')
+  
+  a_probe_aligned_consMat$position <- as.character(1:nrow(a_probe_aligned_consMat))
+  a_probe_aligned_consMat$position <- factor(a_probe_aligned_consMat$position, 
+                                             a_probe_aligned_consMat$position)
+  
+  a_probe_aligned_consMat_sub <- a_probe_aligned_consMat[,c('A', 'C', 'G', 'T','N','h')]
+  colnames(a_probe_aligned_consMat_sub) = c('A', 'C', 'G', 'T','N','H')
+  return(a_probe_aligned_consMat_sub)
+}
+```
+
+```{r file_loading}
+working_dir <- params$working_dir
+genomes_dir <- params$genomes_dir
+fasta_file <- file.path(working_dir,genomes_dir,params$aligned_fasta)
+probes_file <- file.path(working_dir,genomes_dir,params$probes_fasta)
+
+data = readDNAStringSet(fasta_file)
+#data_gisaid = readDNAStringSet("~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject/aligneddata/GISAID_humanOnly_complete_hiCovNoLowCov_200420_passQC_probes_aligned_clean.fa")
+
+probes_fa <- data.frame(seqs=readDNAStringSet(probes_file))
+
+DIR_NAME = file.path(working_dir,genomes_dir)
+
+data_set <- params$data_set
+```
+
+```{r}
+
+for(i in 1:nrow(probes_fa)){
+
+  #### checking probe coordinations
+  probe_start_end_indices = get_start_end_indices(data, probes_fa)
+  probe_start_end_indices.df <- get_start_end_df(probe_start_end_indices)
+    
+  prob_names = rownames(probe_start_end_indices.df)
+  
+  a_probe_name = prob_names[i]
+  dir_name = file.path(DIR_NAME,a_probe_name)
+  dir.create(dir_name)
+  
+  write.csv(probe_start_end_indices.df, 
+            file.path(dir_name,
+                      paste('probe_start_end_indices_',data_set'.csv',sep="")), 
+            quote = F, col.names = T, row.names = T)
+  
+  
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  
+  cons_mat <- get_cons_mat(i, prob_names,probe_start_end_indices.df)
+  cons_mat_mismatch = remove_probe_seq(cons_mat, a_probe_seq)
+  cons_mat_mismatch_perc = get_perc(cons_mat_mismatch, rowSums(cons_mat))
+  cons_mat_mismatch_perc$position=rownames(cons_mat_mismatch_perc)
+  
+  freqtable = as.data.frame(t(cons_mat_mismatch_perc), stringsAsFactors=FALSE)
+  colnames(freqtable) = unlist(strsplit(a_probe_seq, "" ))
+  write.csv(freqtable, 
+            file.path(dir_name,paste(a_probe_name,  
+                                "_mismatch_perc_table_',data_set,'.csv",sep="")),
+            quote = F,  row.names = T)
+  
+  cons_mat_mismatch_perc$position <- factor(cons_mat_mismatch_perc$position, 
+                                            cons_mat_mismatch_perc$position)
+  cons_mat_mismatch_perc_m = melt(cons_mat_mismatch_perc)
+  colnames(cons_mat_mismatch_perc_m) = c('position', 'nucleotide', 'Frequency')
+  
+  
+  p1=ggseqlogo(a_probe_seq)+ylab('')+
+    ggtitle(paste(a_probe_name,"(",data_set,")")+
+    theme(plot.title = element_text(hjust = 0, size=18, face = "bold"))+xlab('')+ylab('')
+  
+  p2=ggseqlogo(t(cons_mat_mismatch),method='p', namespace=c('A', 'C', 'G', 'T','N','H'), col_scheme = color_palette)+
+    # + ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) ) +
+    theme(plot.title = element_text(hjust = 0.5, size=12, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('')+xlab('')
+  
+  p3=ggplot(cons_mat_mismatch_perc_m)+
+    geom_bar(aes(x=position, y=Frequency, fill=nucleotide), stat="identity")+
+    theme_classic() + 
+    #ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) )+
+    theme(plot.title = element_text(hjust = 0.5, size=12, face = "bold"),legend.position = "none",
+          plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('Frequency')+
+    scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+ylim(c(0,100))+xlab('')
+
+    pdf(file.path(dir_name, paste("all", a_probe_name, 
+                                  data_set, ".pdf",sep="_")),
+        width = 10, height = 10)
+  #print(p1)
+  #print(p2)
+  #print(p3)
+  #print(p4)
+  #print(p5)
+  print(gridExtra::grid.arrange( p1, p2, p3,  ncol=1,nrow=3))
+  dev.off()
+}
+```
+
+

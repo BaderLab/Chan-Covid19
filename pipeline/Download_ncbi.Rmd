@@ -2,7 +2,9 @@
 title: "Download NCBI fasta"
 output: html_notebook
 params:
-  working_dir: /home/rstudio/projects/pipeline
+  working_dir: /home/rstudio/projects
+  data_dir: data
+  probes_dir: probes/probes_May_27_2020
 ---
 
 Download the Sars-cov2 fasta file from NCBI using E-utils. (Unfortunately E-utils is separate from the NCBI virus website data.  The virus website does not support E-utils.)
@@ -11,6 +13,7 @@ This URL(from the virus website): https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#
 returns a different number of sequences than the NCBI E-utils resource:
 https://www.ncbi.nlm.nih.gov/nuccore/?term=sars-cov2%5BORGN%5D+OR+2697049%5BTXID%5D
 
+The sequences from the Virus site eventually end up in the NCBI e-utils site but it might take a few days for the sequences to be indexed there. 
 
 ```{r required_libraries, message=FALSE, warning=FALSE}
 if (! requireNamespace("rentrez", quietly=TRUE)) {
@@ -26,14 +29,15 @@ if (! requireNamespace("ggplot2", quietly=TRUE)) {
 library(rentrez)
 library(XML)
 library(ggplot2)
+library(knitr)
 
 working_dir <- file.path(params$working_dir)
 ```
 
 
-```{r}
+```{r include=FALSE}
 #initialize directories
-data_directory <- file.path(working_dir,"data")
+data_directory <- file.path(working_dir,params$data_dir)
 if(!dir.exists(data_directory)){
   dir.create(data_directory)
 }
@@ -50,9 +54,42 @@ if(!dir.exists(figures_directory)){
 ```
 
 
-Download the fasta format as well as the meta information for all the sars-cov2 genomes available though e-utils.
+## Methods
 
-```{r download_ncbi_fasta}
+### Probe sequences
+Several probes targeting each of ORF1ab, RdRp and E genes of the SARS-CoV-2 genome were provided by the Chan lab (Table 1).
+
+```{r output_current_probes, include=FALSE}
+
+probes_dir <- file.path(data_directory,params$probes_dir)
+
+probe_files <- sort(list.files(probes_dir))
+
+#from the file name get the gene and the type of tag
+probes <- data.frame(name=character(),gene=character(),
+                     tag_type=character(),
+                     #sequence = character(),
+                     stringsAsFactors = FALSE)
+for(i in 1:length(probe_files)){
+  current_file <- gsub(probe_files[i],pattern = ".fa",replacement = "")
+
+  name <- current_file
+  gene <- unlist(strsplit(current_file,split = "_"))[2]
+  tag_type <- unlist(strsplit(current_file,split = "_"))[3]
+  #sequence <- read.table(file.path(probes_dir,probe_files[i]),stringsAsFactors = FALSE)[2,1]
+  probes <- rbind(probes, cbind(name, gene, tag_type))
+  #probes <- rbind(probes, cbind(name, gene, tag_type,sequence))
+}
+
+kable(probes)
+```
+
+
+
+### Fasta Sequences
+Download the fasta format as well as the meta information for all the sars-cov2 genomes available through  NCBI e-utils.
+
+```{r download_ncbi_fasta, message=FALSE, warning=FALSE, include=FALSE}
 #get all the sequences at NCBI for SARs-cov2
 sequence_summary <- entrez_search(db = "nuccore", 
                                   "sars-cov2[ORGN] OR 2697049[TAXID]", 
@@ -106,7 +143,10 @@ for (start_rec in seq(0, num_sequences, 50)) {
 }
 ```
 
-```{r}
+NCBI is an established nucleotide repository and serves as a second source of global SARS-CoV-2 genomes. `r dim(meta_data)[1]` sequences (selection criteria, nucleotide completeness: ‘complete’) were downloaded from the NCBI Virus Hub (https://www.ncbi.nlm.nih.gov/labs/virus/vssi) on `r Sys.Date() ` . The sequences include isolates from multiple sources (Fig 3).
+
+
+```{r echo=FALSE}
 
 #create a plot of data growth
 dat <- meta_data
@@ -139,5 +179,5 @@ tryCatch({
   dev.off()
 })
 p
-```
 
+```

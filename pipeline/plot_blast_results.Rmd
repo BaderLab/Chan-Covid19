@@ -1,0 +1,94 @@
+---
+title: "Graph Blast results"
+output: html_notebook
+params:
+  working_dir: /home/rstudio/projects
+  output_dir: data/seqalign_blast/200707/ncbi
+---
+
+```{r include=FALSE}
+if (! requireNamespace("ggplot2", quietly=TRUE)) {
+ install.packages('ggplot2')
+}
+  library(ggplot2)
+
+if (! requireNamespace("ggpubr", quietly=TRUE)) {
+ install.packages('ggpubr')
+}
+library(ggpubr)
+
+
+theme_set(theme_pubr())
+```
+
+```{r include=FALSE}
+#mismatch = list()
+#length_diff = list()
+make_graphs <- function(outdir) {
+  #only go through the blast results files.
+  files = list.files(outdir)
+  files <- files[grep(pattern="all_tophits.txt",files,value = FALSE)]
+  labels = c()
+  probe_length = 30
+  mismatch_dat = c()
+  length_diff_dat = c()
+  
+  for(i in 1:length(files)){
+    f = files[i]
+    r = read.table(file.path(outdir,f))
+    colnames(r) = c("qseqid","sseqid","pident","length","mismatch","gapopen","qstart","qend","sstart","send","evalue","bitscore")
+    #mismatch[[f]] = r$mismatch
+    probe_name = paste(strsplit(f,"_")[[1]][c(4)],strsplit(f,"_")[[1]][c(5)])
+    mismatch_df = data.frame(value =  r$mismatch, variable = probe_name)
+    
+    labels =c(labels, probe_name)
+    if (probe_name == "RDRP forward" | probe_name =="RDRP reverse"){
+      probe_length = 31
+    }
+    #length_diff[[f]] = probe_length- r$length
+    length_diff_df = data.frame(value =  probe_length- r$length, variable = probe_name)
+    
+    mismatch_dat <- rbind(mismatch_dat, mismatch_df)
+    length_diff_dat <- rbind(length_diff_dat, length_diff_df)
+    
+  }
+  a = ggplot(mismatch_dat, aes(x = variable, y = value)) +  coord_flip() + xlab("Probe") +ylab("Number of nucleotide mismatches") + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.25, stackratio=0.0005) 
+  b = ggplot(length_diff_dat, aes(x = variable, y = value)) + coord_flip() + xlab("Probe") +ylab("Length difference (probe - alignment length)") + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.25, stackratio=0.0005) 
+  
+  return(list(a,b))
+}
+```
+
+```{r}
+#par(mar=c(5,10,2,2))
+#boxplot(mismatch,horizontal=TRUE,names=labels,las=2,main="Number of Nucleotide Mismatches",pty=19)
+#boxplot(length_diff,horizontal=TRUE,names=labels,las=2,main="Length Difference")
+
+ROOT_DIR = file.path(params$working_dir, params$output_dir)
+
+#get the name of the directory
+current_dir <- basename(ROOT_DIR)
+
+#GISAID_RESULTS_OUTDIR = paste0(ROOT_DIR,"results/GISAID/HumanOnly_Complete_HiCovNoLowCov_200420_200420/")
+#NCBI_RESULTS_OUTDIR = paste0(ROOT_DIR,"results/NCBI/CompleteSeq_200420_200420/")
+
+#gisaid_g = make_graphs(GISAID_RESULTS_OUTDIR)
+#ncbi_g = make_graphs(NCBI_RESULTS_OUTDIR)
+#figure <- ggarrange(gisaid_g[[1]], gisaid_g[[2]], ncbi_g[[1]],ncbi_g[[2]],
+#                    labels = c("A", "B","C","D"),
+#                    ncol = 2, nrow = 2)
+
+current_graphs = make_graphs(ROOT_DIR)
+
+figure <- ggarrange(current_graphs[[1]], current_graphs[[2]], 
+                    labels = c("A", "B"),
+                    ncol = 2, nrow = 1)
+
+
+pdf(file = file.path(ROOT_DIR,paste(current_dir,"blast_results.pdf",sep="_")),width=10,height=6)
+annotate_figure(figure,
+               top = text_grob(current_dir, color = "red", face = "bold", size = 14))
+dev.off() 
+```
+
+

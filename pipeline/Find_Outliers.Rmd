@@ -1,0 +1,177 @@
+---
+title: "Find outliers"
+output: html_notebook
+params:
+  working_dir: /home/rstudio/projects
+  genomes_dir: data/genomes/200713
+  fasta_file: ncbi_sars_cov2_2020-07-13.fa
+  nthresh: 550
+---
+
+```{r load_files, include=FALSE}
+#get parameters
+working_dir <- params$working_dir
+genomes_dir <- params$genomes_dir
+fasta_filename <- file.path(working_dir, genomes_dir,params$fasta_file)
+baseF <- params$fasta_file
+
+#thresholf of number of ns
+nthresh <- params$nthresh
+
+dt <- format(Sys.Date(),"%y%m%d")
+
+outdir <- file.path(working_dir, genomes_dir,"QC",
+                    paste(params$fasta_file,dt,sep = "_" ))
+print(outdir)
+#check that the directory exists
+if (!dir.exists(outdir)){
+  dir.create(outdir)
+}
+
+logFile <- file.path(outdir,sprintf("%s_%s.log",baseF,dt))
+
+
+
+library(seqinr)
+#read in the fasta file
+fasta <- read.fasta(fasta_filename,seqtype = "DNA")
+
+```
+
+Compute the distrubtion of nucleotides, n's and gaps
+```{r count_nucleotides, include=FALSE}
+all_seq_summary <- c()
+for(i in 1:length(fasta)){
+  cur_seq <- c(getAnnot(fasta[[i]]),count(fasta[[i]],1,alphabet = c("a","c","g","t","n","-")))
+  all_seq_summary <- rbind(all_seq_summary, cur_seq)
+}
+
+#Add the sequence lengths
+sequence_lengths <- unlist(lapply(fasta,FUN = length))
+
+#convert to dataframe
+all_seq_summary_df <- data.frame(name=all_seq_summary[,1], 
+                                 numGaps=as.numeric(all_seq_summary[,2]),
+                                 numA=as.numeric(all_seq_summary[,3]),
+                                 numC=as.numeric(all_seq_summary[,4]),
+                                 numG=as.numeric(all_seq_summary[,5]),
+                                 numN=as.numeric(all_seq_summary[,6]),
+                                 numT=as.numeric(all_seq_summary[,7]),
+                                 seq_length=sequence_lengths,
+                                 stringsAsFactors = FALSE)
+                            
+
+```
+
+Graph the distribution of Ns in the sequences
+
+## Distribution of number of Ns in the Sequences
+
+```{r graph_numN, include=FALSE}
+
+	hist(all_seq_summary_df$numN,n=100,main=paste("num N (",baseF,")",sep=""),
+	     xlab = "Number of Ns")
+	qtl <- quantile(all_seq_summary_df$numN, c(0.25,0.5,0.75,0.8,0.9,0.95,0.99))
+	abline(v=qtl,lty=3,col='red')
+
+```
+
+## Number of Gaps
+
+```{r groph_numgaps, include=FALSE}
+	hist(all_seq_summary_df$numGaps,n=100,main=paste("num Gaps (",baseF,")",sep=""),
+	     xlab = "Number of Gaps")
+	qtl <- quantile(all_seq_summary_df$numGaps, 
+		c(0.25,0.5,0.75,0.8,0.9,0.95,0.99,0.995,0.999,0.9999))
+	abline(v=qtl,lty=3,col='red')
+```
+
+## Relationship between number of gaps and number of Ns
+```{r graph_numN_to_numgaps, include=FALSE}
+	plot(all_seq_summary_df$numGaps,all_seq_summary_df$numN, xlab="number of gaps",ylab="number of Ns", main=paste("Number of gaps vs Ns (",baseF,")",sep=""))
+	abline(0,1,col='red')
+	abline(h=nthresh,v=10,lty=3,col='red')	
+```
+
+
+
+```{r create_pdf_summary, echo=FALSE}
+failed_ids <- c()
+pdf(file.path(outdir, sprintf("%s_numNandGaps_%s.pdf",baseF,dt)))
+	cat("Num N\n")
+	hist(all_seq_summary_df$numN,n=100,main=paste("num N (",baseF,")",sep=""),
+	     xlab = "Number of Ns")
+	qtl <- quantile(all_seq_summary_df$numN, c(0.25,0.5,0.75,0.8,0.9,0.95,0.99))
+	abline(v=qtl,lty=3,col='red')
+	print(summary(all_seq_summary_df$numN))
+	print(qtl)
+
+failID  <- 1
+
+	nthresh <- 550
+	idx <- which(all_seq_summary_df$numN > nthresh) # top 5% worst
+	if (length(idx)>0) {
+	  failed_ids <- c(failed_ids,all_seq_summary_df[idx,1])
+		write.table(all_seq_summary_df[idx,],
+			file=file.path(outdir, sprintf("%s_top5pct_numN_%s.txt",baseF,dt)),
+			sep="\t",col=T,row=F,quote=F)
+		# violator 1 - too many N's
+		message(sprintf("FAIL: N > 550: %i sequences", length(idx)))
+		write.table(all_seq_summary_df[idx,1],
+			file=file.path(outdir,
+			               sprintf("fail_%s_NViolate_IDs_%s.txt",baseF,dt)),
+			sep="\t",col=F,row=F,quote=F)
+	}	
+	
+	
+cat("Gaps\n")
+	hist(all_seq_summary_df$numGaps,n=100,main="num Gaps")
+	qtl <- quantile(all_seq_summary_df$numGaps, 
+		c(0.25,0.5,0.75,0.8,0.9,0.95,0.99,0.995,0.999,0.9999))
+	print(qtl)
+	abline(v=qtl,lty=3,col='red')
+	
+	plot(all_seq_summary_df$numGaps,all_seq_summary_df$numN, xlab="num gaps",ylab="num N")
+	abline(0,1,col='red')
+	abline(h=nthresh,v=10,lty=3,col='red')	
+	
+	
+		# violator 2 - too many gaps
+	idx <- which(all_seq_summary_df$numGaps > 10) # top 5% worst
+	if (length(idx)>0) {
+	  failed_ids <- c(failed_ids,all_seq_summary_df[idx,1])
+		message(sprintf("FAIL: numGaps > 10: %i sequences", length(idx)))
+		write.table(all_seq_summary_df[idx,],
+			file=file.path(outdir,sprintf("%s_GapViolate_%s.txt",baseF,dt)),
+			sep="\t",col=T,row=F,quote=F)
+		write.table(all_seq_summary_df[idx,1],
+			file=file.path(outdir,
+			               sprintf("fail_%s_GapViolate_IDs_%s.txt",baseF,dt)),
+			sep="\t",col=F,row=F,quote=F)
+	}
+	
+	# violator 3 - seq too long
+	idx <- which(all_seq_summary_df$seq_length > 30000 | all_seq_summary_df$seq_length < 29000)
+	if (length(idx)>0) {
+	  failed_ids <- c(failed_ids,all_seq_summary_df[idx,1])
+		message(sprintf("FAIL: seq length > 30kb: %i sequences", length(idx)))
+		write.table(all_seq_summary_df[idx,1],
+			file=file.path(outdir,
+			               sprintf("fail_%s_LenViolate_IDs_%s.txt",baseF,dt)),
+				sep="\t",col=F,row=F,quote=F)
+	}
+	
+	write.table(failed_ids,file=file.path(outdir,"failIDs.txt"),sep="\t",col=F,row=F,quote=F)
+	
+	dev.off()
+```
+
+Create a fasta file excluding the `r length(failed_ids)` sequences that failed. 
+
+```{r output_fasta_QC, include=FALSE}
+fasta_passQC <- fasta[which(!getAnnot(fasta) %in% failed_ids)]
+fasta_passQC_filename <- file.path(outdir,paste(baseF,"passQC.fa",sep = "_"))
+write.fasta(sequences = fasta_passQC,names=getAnnot(fasta_passQC),
+                          file.out = fasta_passQC_filename)
+```
+

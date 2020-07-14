@@ -1,0 +1,84 @@
+---
+title: "Chan Lab SARS-CoV-2 Probe Analysis"
+output: html_notebook
+params:
+  working_dir: /home/rstudio/projects
+  genomes_dir: data/genomes/200707
+  probes_dir: data/probes/probes_May_27_2020
+---
+
+Analysis date: `r date()`
+
+Report date: `r date()`
+
+```{r include=FALSE}
+working_dir <- params$working_dir
+genomes_dir <- params$genomes_dir
+probes_dir <- params$probes_dir
+
+ncbi_file <- file.path(working_dir, genomes_dir, grep(pattern="ncbi",list.files(file.path(working_dir,genomes_dir)),value = TRUE))
+
+gisaid_file <- file.path(working_dir, genomes_dir, grep(pattern="gisaid",list.files(file.path(working_dir,genomes_dir)),value = TRUE))
+
+```
+
+
+```{r include=FALSE}
+#get the number of sequences in each of the fasta files
+library(seqinr)
+ncbi_fasta <- read.fasta(ncbi_file,seqtype = "DNA")
+gisaid_fasta <- read.fasta(gisaid_file,seqtype="DNA")
+
+```
+
+## Summary
+We aligned Chan lab probes to SARS-CoV-2 genomes from two complementary databases: NCBI (fewer genome sequences, higher quality) with ~ `r length(ncbi_fasta)` genomes and GISAID (more sequences, poorer quality) with > `r length(gisaid_fasta)` genomes. 
+
+Our analysis suggests that the RdRp forward and reverse primers should be redesigned because it doesn’t match the viral genome at multiple positions. All other probes and primers appear to correctly target stable genome regions. ORF1ab probes lie in a region that may be difficult to sequence, as 3.2% of GISAID genomes have systematic blocks of N’s in this region. The uncertainty in this sequence is likely caused by technical DNA sequencing factors and represents poor data quality from the GISAID database. However, it does represent some uncertainty, which should be considered when interpreting ORF1ab probe results.
+
+## Background
+The Chan lab aims to diagnose human SARS-CoV-2 infection using probes that simultaneously target multiple regions of the viral genome. Several DNA probes were designed to target each of three genome regions (ORF1ab, RdRp and E genes) of the human SARS-CoV-2 genome sequence (Fig 1). This analysis aims to measure the match fidelity of each probe to its target sequence and identify any mutations in the targeted regions found in available human SARS-CoV-2 genome sequences.
+
+![Figure 1 - Schema of human SARS-CoV-2 genome (~30kb). Probes target three regions, ORF1ab, RdRp and E genes. Red arrows indicate approximate target positions. ](./figures/Fig1_Genomic-Organization-of-SARS-CoV-2.jpeg)
+
+## Methods
+### Probe sequences
+
+Several probes targeting each of ORF1ab, RdRp and E genes of the SARS-CoV-2 genome were provided by the Chan lab (Table 1).
+
+```{r include=FALSE}
+#get all the probes from the probes dir
+probes_files <- list.files(file.path(working_dir,probes_dir))
+
+probes_table <- c()
+for(i in 1:length(probes_files)){
+  current_probe <- read.fasta(file.path(working_dir, probes_dir,probes_files[i]))
+  #type - taken from the file name
+  type <- unlist(strsplit(unlist(strsplit(probes_files[i], split="\\."))[1],split = "_"))[3] 
+  probes_table <- rbind(probes_table,c(names(current_probe),paste(unlist(getSequence(current_probe)),collapse = ""),type))
+}
+
+probe_table_dt <- data.frame(name=probes_table[,1],
+                             sequence=probes_table[,2],
+                             type=probes_table[,3],stringsAsFactors = FALSE)
+```
+
+```{r echo=FALSE}
+unique_probe_types <- unique(probe_table_dt$type)
+probe_table_output <- c()
+for(j in 1:length(unique_probe_types)){
+  current_probe_type <- unique_probe_types[j]
+  current_probes <- probe_table_dt[which(probe_table_dt$type==current_probe_type),]
+  colnames(current_probes)[2] <- current_probe_type
+  if(length(probe_table_output) == 0 ){
+    probe_table_output <- current_probes[,1:2]
+  } else{
+    probe_table_output <- merge(probe_table_output,current_probes[,1:2],
+                                by.x=1,by.y=1,all=TRUE)
+  }
+}
+probe_table_output
+
+```
+
+

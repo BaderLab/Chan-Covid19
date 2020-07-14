@@ -1,0 +1,13 @@
+
+0. NCBI_dbGrowth.R
+1. need a script for GISAID_dbGrowth.R
+1. Run QC on genomes
+	- qcGenomes.sh (countN.pl, findOutliers.R)
+2. MAFFT
+
+3. BLAST
+
+4. Sliding window Ns based on MAFFT
+	GISAID_countN_slidingWin_noRect.R
+
+5. Seq logo. 
