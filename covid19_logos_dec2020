@@ -1,0 +1,199 @@
+# monthly_report_final_code
+
+## code
+
+ * load libraries
+
+```
+library(Biostrings)
+library(stringr)
+library(seqinr)
+library(msa)
+library(RColorBrewer)
+library(ggseqlogo)
+library(ggplot2)
+library(reshape2)
+library(pheatmap)
+```
+
+* functions
+
+```
+## object that store colors of the logos letters
+color_palette = make_col_scheme(chars=c('A', 'C', 'G', 'T','N','H'), 
+                                cols=c('forestgreen', 'royalblue3', 'gold', 'red2', "grey66", "lightgray"),
+                                name='custom2')
+### Functions
+cleanDF <- function(msa_probe){
+  colnames(msa_probe) = 'seq'
+  msa_probe$name = rownames(msa_probe)
+  rownames(msa_probe) <- NULL
+  return(msa_probe)
+}
+remove_probe_seq <- function(consMat, probe_sequence){
+  consMat$nuc <- str_split(probe_sequence,'')[[1]]
+  for(i in 1:nrow(consMat)){
+    nuc = consMat$nuc[i]
+    consMat[i,nuc] = 0
+  }
+  consMat <- consMat[,!colnames(consMat) %in% c('nuc')]
+  return(consMat)
+}
+get_perc <- function(df, sum){
+  df$A = 100*df$A/sum
+  df$C = 100*df$C/sum
+  df$G = 100*df$G/sum
+  df$T = 100*df$T/sum
+  df$N = 100*df$N/sum
+  df$H = 100*df$H/sum
+  return(df)
+}
+get_start_end_indices <- function(data, probes_fa){
+    data = data
+    refindex= grep( "Wuhan/WIV04/2019", names(data))
+    refindex= grep( "hCoV-19/England/CAMC-B07C46/2020", names(data))
+    #refindex= grep( "hCoV-19/England/ALDP-12DAFC1/2021", names(data))
+    
+    #refindex= grep( "hCoV-19/Denmark/DCGC-47630/2021", names(data))
+    probes <- data[rep(refindex,8)]  ##aligned probe sequence, does it work with any sequence, eg aligned 
+    names(probes) = rownames(probes_fa)
+  
+  
+  probe_start_end_indices = sapply(1:length(probes), 
+                                   function(index){
+                                     aProbeSeq <- as.character(probes[[index]])
+                                     result <- as.data.frame(str_locate_all(pattern =probes_fa$seqs[index], aProbeSeq))
+                                     print('----------------------------------------')
+                                     print(paste0('index: ', index))
+                                     print(names(probes)[index])
+                                     print(probes_fa$seqs[index])
+                                     print(result)
+                                     return(result)
+                                   }, simplify = F)
+  
+  names(probe_start_end_indices) <- rownames(probes_fa)
+  return(probe_start_end_indices)
+  
+}
+get_start_end_df <- function(probe_start_end_indices){
+  ### finding the coordination of aligned probes
+  probe_start_index <- lapply(probe_start_end_indices, function(x) x$start)
+  probe_end_index <- lapply(probe_start_end_indices, function(x) x$end)
+  probe_start_end_indices.df <- cbind(data.frame(unlist(probe_start_index)), 
+                                      data.frame(unlist(probe_end_index)))
+  colnames(probe_start_end_indices.df) <- c('start', 'end')
+  probe_start_end_indices.df$width = probe_start_end_indices.df$end - probe_start_end_indices.df$start
+  return(probe_start_end_indices.df)
+}
+get_cons_mat <- function(i, prob_names,probe_start_end_indices.df){
+  
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  print('--------------------')
+  print(a_probe_name)
+  
+  a_probe_start_index = probe_start_end_indices.df$start[i]
+  a_probe_end_index = probe_start_end_indices.df$end[i]
+  a_probe_aligned = subseq(data, start = a_probe_start_index, end = a_probe_end_index)
+  
+  ### to access the raw aligned sequences
+  a_probe_aligned_df = data.frame(a_probe_aligned)
+  a_probe_aligned_df <- cleanDF(a_probe_aligned_df)
+  
+  ### make the consensus Matrix
+  a_probe_aligned_alphabetFreq <- alphabetFrequency(a_probe_aligned)
+  a_probe_aligned_consMat <- data.frame(t(consensusMatrix(a_probe_aligned)))
+  ncol_cons_mat = ncol(a_probe_aligned_consMat)
+  colnames(a_probe_aligned_consMat)[(ncol_cons_mat-2):ncol_cons_mat] = c('h','plos','dot')
+  
+  a_probe_aligned_consMat$position <- as.character(1:nrow(a_probe_aligned_consMat))
+  a_probe_aligned_consMat$position <- factor(a_probe_aligned_consMat$position, 
+                                             a_probe_aligned_consMat$position)
+  
+  a_probe_aligned_consMat_sub <- a_probe_aligned_consMat[,c('A', 'C', 'G', 'T','N','h')]
+  colnames(a_probe_aligned_consMat_sub) = c('A', 'C', 'G', 'T','N','H')
+  return(a_probe_aligned_consMat_sub)
+}
+```
+
+ * function to select data using start and end dates
+
+```
+selectdata = function(dstart, dend, data){
+  dstart =dstart
+  dend =dend
+  data = data
+  print(class(dstart))
+  print(dim(metadata))
+  dateindex = which(as.character(metadata$dates) >= as.character(dstart) & as.character(metadata$dates) <= as.character(dend)) # 30 or 31 depending on the month
+#dateindex2 = which(metadata$names=="hCoV-19/Wuhan/WIV04/2019") # representative of first isolate
+dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+#dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+dataindex3 = c(dateindex2, dateindex)
+data_gisaid_sel3 = data[dataindex3,] ## contains the selected sequences
+length(names(data_gisaid_sel3))
+#data_gisaid_sel1 = data_gisaid[dataindex3,] # not sure why I kept this , will see it in my code downstream
+#length(names(data_gisaid_sel))
+return(data_gisaid_sel3 )
+}
+
+```
+
+
+ * function to create frequency table
+ 
+ ```
+ #data=data_gisaid_week1
+#i=i
+freqfunction = function(data, i){
+  print(data)
+   #### checking probe coordinations
+#  probe_start_end_indices = get_start_end_indices(data, probes_fa)
+ # probe_start_end_indices.df <- get_start_end_df(probe_start_end_indices) ### look inside the object   probe_start_end_indices.df to see if you have a start and an end of all probes in case this part of the code does not give you expected results , that would indicate an issue with the alignment. 
+#  prob_names = rownames(probe_start_end_indices.df)
+ 
+  # getting name of probe and probe sequence to be tested
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  
+  cons_mat <- get_cons_mat(i, prob_names,probe_start_end_indices.df)
+  cons_mat_mismatch = remove_probe_seq(cons_mat, a_probe_seq)
+  cons_mat_mismatch_perc = get_perc(cons_mat_mismatch, rowSums(cons_mat))
+  cons_mat_mismatch_perc$position=rownames(cons_mat_mismatch_perc)
+  
+  freqtable = as.data.frame(t(cons_mat_mismatch_perc), stringsAsFactors=FALSE)  #percentage dataframe
+  colnames(freqtable) = unlist(strsplit(a_probe_seq, "" ))
+  print(freqtable)
+  return(freqtable)
+} 
+ 
+ ```
+  * Load MSA and select sequences
+  ```
+data_gisaid = readDNAStringSet("~/Downloads/ GISAID/msa_0410/msa_0410.fasta")
+class(data_gisaid)
+
+probes_fa <- data.frame(seqs=readDNAStringSet("~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject_sept2020/probes/ProbesMay2020_revComp.fa"))
+##directory where the images are going to be saved
+DIR_NAME = "~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject_sept2020/logos/logos"
+
+ ```
+ 
+  * Checking genome width
+  ```
+ ## first step is to double check that all genomes are complete by looking at the genome length, outliers are removed in order to keep only complete genome
+genomewidth = width(data_gisaid) 
+  
+  ```
+ * building metadata
+ ```
+ # this step is the same as the one above to make sure only complete genome were kept
+genomewidth <- width(data_gisaid)
+hist(genomewidth)
+
+ ```
+
+ 
+
+
+
