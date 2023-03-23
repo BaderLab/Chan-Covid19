@@ -5,6 +5,7 @@
 title: "GISAID"
 output: html_notebook
 ## Delaram  Pouyabar / Veronique Voisin
+## Sliding Window: Shradha Pai
 ## https://cran.r-project.org/web/packages/ggseqlogo/index.html
 ## tested using R version 3.5.0
 ---
