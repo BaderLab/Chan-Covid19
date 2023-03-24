@@ -6,17 +6,17 @@
  * Multiple sequence alignment (MSA) was performed using MAFFT version 7 (https://mafft.cbrc.jp/alignment/software/). We aligned all genomes and as well as the probe sequences using default parameters. MAFFT has an iterative alignment algorithm and is useful for sequences containing large gaps. MSAs were visually evaluated using UniProt UGENE (http://ugene.net/). This visualization permitted an assessment of the probe-genome alignment region to identify systematic gaps in the reference genome MSA. trimAl was used to clean the MSA and remove regions with all gaps. MSA results were then imported into R and the Biostrings_2.62.0 package was used to count the number of mismatches of each probe against the reference genome sequence "Wuhan/WIV04/2019" and logos were generated using the ggseqlogo package.
 
 
- ## CODE 
-  * The main steps are:
+ ## code 
+ * The main steps are:
    * download the multiple sequence alignment from the GISAID website 
    * double check that all genomes are complete (full length)
-   * select the sequences from start to end dates of current monthly reporting
+   * select the sequences from start to end dates of current monthly reporting period
    * run trimAl to remove full gap column in the selected sequences
    * create a plot for quality control of sequences (number of N and -) / sliding window
    * create a plot to study geographical distribution of the viral sequences
    * create logos and heatmap of mismatch counts:
     * find the coordinates - start and end - of each probe using a reference genome
-    * "Wuhan/WIV04/2019" was used first (first wave/ 2020) and then "hCoV-19/England/CAMC-B07C46/2020" for second and third wave (late 2020/2021)
+    * "Wuhan/WIV04/2019" was used first (first wave/ 2020) and then "hCoV-19/England/CAMC-B07C46/2020" was used for second and third wave (late 2020/2021)
     * get the matrix of all sequences using the start and end coordinates
     * produce the confusion matrix which counts the frequency of mutation per nucleotide position
     * create a heatmap of the confusion matrix
