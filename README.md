@@ -8,10 +8,6 @@ Associated with: Genotyping SARS-CoV‐2 Variants Using Ratiometric Nucleic Acid
 
 Aknowledgements to: Ruth Isserlin, Shirley Hui, Maria Abou Chakra, Zoe Clarke.
 
-README
- * The final code and reports are located at: https://github.com/BaderLab/Chan-Covid19/tree/monthly_report_final_code
-
-
 ## method
 * The number of mutations between probes and viral sequences was tracked by analyzing SARS-CoV-2 genomes from NCBI and GISAID databases. Genomes from GISAID and NCBI were downloaded each month between April 2020 and March 2021. Sequences were selected based on the following criteria: complete, high coverage, excluding low coverage and from humans. Sequences of lower quality were excluded from analysis including sequences with >550 Ns, >10 gaps and a length >30kb. Analysis was performed using shell-scripting and R.
 
