@@ -1,0 +1,746 @@
+---
+title: "GISAID"
+output: html_notebook
+## Delaram  Pouyabar / Veronique Voisin
+## https://cran.r-project.org/web/packages/ggseqlogo/index.html
+## tested using R version 3.5.0
+---
+###load libraries
+```{r}
+library('Biostrings')
+#library('data.table')
+library(stringr)
+library(seqinr)
+library(msa)
+library(RColorBrewer)
+library('ggseqlogo')
+library(ggplot2)
+library(reshape2)
+library(pheatmap)
+```
+
+### functions
+```{r}
+## object that store colors of the logos letters
+color_palette = make_col_scheme(chars=c('A', 'C', 'G', 'T','N','H'), 
+                                cols=c('forestgreen', 'royalblue3', 'gold', 'red2', "grey66", "lightgray"),
+                                name='custom2')
+
+### Functions
+cleanDF <- function(msa_probe){
+  colnames(msa_probe) = 'seq'
+  msa_probe$name = rownames(msa_probe)
+  rownames(msa_probe) <- NULL
+  return(msa_probe)
+}
+
+remove_probe_seq <- function(consMat, probe_sequence){
+  consMat$nuc <- str_split(probe_sequence,'')[[1]]
+  for(i in 1:nrow(consMat)){
+    nuc = consMat$nuc[i]
+    consMat[i,nuc] = 0
+  }
+  consMat <- consMat[,!colnames(consMat) %in% c('nuc')]
+  return(consMat)
+}
+
+
+get_perc <- function(df, sum){
+  df$A = 100*df$A/sum
+  df$C = 100*df$C/sum
+  df$G = 100*df$G/sum
+  df$T = 100*df$T/sum
+  df$N = 100*df$N/sum
+  df$H = 100*df$H/sum
+  return(df)
+}
+
+
+get_start_end_indices <- function(data, probes_fa){
+    data = data
+    refindex= grep( "Wuhan/WIV04/2019", names(data))
+    refindex= grep( "hCoV-19/England/CAMC-B07C46/2020", names(data))
+    #refindex= grep( "hCoV-19/England/ALDP-12DAFC1/2021", names(data))
+    
+    #refindex= grep( "hCoV-19/Denmark/DCGC-47630/2021", names(data))
+    probes <- data[rep(refindex,8)]  ##aligned probe sequence, does it work with any sequence, eg aligned 
+    names(probes) = rownames(probes_fa)
+  
+  
+  probe_start_end_indices = sapply(1:length(probes), 
+                                   function(index){
+                                     aProbeSeq <- as.character(probes[[index]])
+                                     result <- as.data.frame(str_locate_all(pattern =probes_fa$seqs[index], aProbeSeq))
+                                     print('----------------------------------------')
+                                     print(paste0('index: ', index))
+                                     print(names(probes)[index])
+                                     print(probes_fa$seqs[index])
+                                     print(result)
+                                     return(result)
+                                   }, simplify = F)
+  
+  names(probe_start_end_indices) <- rownames(probes_fa)
+  return(probe_start_end_indices)
+  
+}
+
+
+get_start_end_df <- function(probe_start_end_indices){
+  ### finding the coordination of aligned probes
+  probe_start_index <- lapply(probe_start_end_indices, function(x) x$start)
+  probe_end_index <- lapply(probe_start_end_indices, function(x) x$end)
+  probe_start_end_indices.df <- cbind(data.frame(unlist(probe_start_index)), 
+                                      data.frame(unlist(probe_end_index)))
+  colnames(probe_start_end_indices.df) <- c('start', 'end')
+  probe_start_end_indices.df$width = probe_start_end_indices.df$end - probe_start_end_indices.df$start
+  return(probe_start_end_indices.df)
+}
+
+
+
+get_cons_mat <- function(i, prob_names,probe_start_end_indices.df){
+  
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  print('--------------------')
+  print(a_probe_name)
+  
+  a_probe_start_index = probe_start_end_indices.df$start[i]
+  a_probe_end_index = probe_start_end_indices.df$end[i]
+  a_probe_aligned = subseq(data, start = a_probe_start_index, end = a_probe_end_index)
+  
+  ### to access the raw aligned sequences
+  a_probe_aligned_df = data.frame(a_probe_aligned)
+  a_probe_aligned_df <- cleanDF(a_probe_aligned_df)
+  
+  ### make the consensus Matrix
+  a_probe_aligned_alphabetFreq <- alphabetFrequency(a_probe_aligned)
+  a_probe_aligned_consMat <- data.frame(t(consensusMatrix(a_probe_aligned)))
+  ncol_cons_mat = ncol(a_probe_aligned_consMat)
+  colnames(a_probe_aligned_consMat)[(ncol_cons_mat-2):ncol_cons_mat] = c('h','plos','dot')
+  
+  a_probe_aligned_consMat$position <- as.character(1:nrow(a_probe_aligned_consMat))
+  a_probe_aligned_consMat$position <- factor(a_probe_aligned_consMat$position, 
+                                             a_probe_aligned_consMat$position)
+  
+  a_probe_aligned_consMat_sub <- a_probe_aligned_consMat[,c('A', 'C', 'G', 'T','N','h')]
+  colnames(a_probe_aligned_consMat_sub) = c('A', 'C', 'G', 'T','N','H')
+  return(a_probe_aligned_consMat_sub)
+}
+
+
+```
+
+##### additional functions for create the weekly frequency tables 
+## function to select data using start and end dates
+```{r}
+selectdata = function(dstart, dend, data){
+  dstart =dstart
+  dend =dend
+  data = data
+  print(class(dstart))
+  print(dim(metadata))
+  dateindex = which(as.character(metadata$dates) >= as.character(dstart) & as.character(metadata$dates) <= as.character(dend)) # 30 or 31 depending on the month
+
+#dateindex2 = which(metadata$names=="hCoV-19/Wuhan/WIV04/2019") # representative of first isolate
+dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+#dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+
+dataindex3 = c(dateindex2, dateindex)
+
+data_gisaid_sel3 = data[dataindex3,] ## contains the selected sequences
+length(names(data_gisaid_sel3))
+
+#data_gisaid_sel1 = data_gisaid[dataindex3,] # not sure why I kept this , will see it in my code downstream
+#length(names(data_gisaid_sel))
+
+return(data_gisaid_sel3 )
+}
+```
+
+
+## function to select data using country from remove gap data (data_gisaid_sel)
+```{r}
+selectcountry = function(country, data){
+  country= country
+  data = data
+  dateindex = which(as.character(metadata$country) == country ) # 30 or 31 depending on the month
+
+#dateindex2 = which(metadata$names=="hCoV-19/Wuhan/WIV04/2019") # representative of first isolate
+dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+#dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+
+dataindex3 = c(dateindex2, dateindex)
+
+data_gisaid_sel3 = data[dataindex3,] ## contains the selected sequences
+length(names(data_gisaid_sel3))
+
+#data_gisaid_sel1 = data_gisaid[dataindex3,] # not sure why I kept this , will see it in my code downstream
+#length(names(data_gisaid_sel))
+
+return(data_gisaid_sel3 )
+}
+```
+
+### function to create frequency table
+```{r}
+
+#data=data_gisaid_week1
+#i=i
+
+freqfunction = function(data, i){
+
+  print(data)
+   #### checking probe coordinations
+#  probe_start_end_indices = get_start_end_indices(data, probes_fa)
+ # probe_start_end_indices.df <- get_start_end_df(probe_start_end_indices) ### look inside the object   probe_start_end_indices.df to see if you have a start and an end of all probes in case this part of the code does not give you expected results , that would indicate an issue with the alignment. 
+#  prob_names = rownames(probe_start_end_indices.df)
+
+ 
+  # getting name of probe and probe sequence to be tested
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  
+  cons_mat <- get_cons_mat(i, prob_names,probe_start_end_indices.df)
+  cons_mat_mismatch = remove_probe_seq(cons_mat, a_probe_seq)
+  cons_mat_mismatch_perc = get_perc(cons_mat_mismatch, rowSums(cons_mat))
+  cons_mat_mismatch_perc$position=rownames(cons_mat_mismatch_perc)
+  
+  freqtable = as.data.frame(t(cons_mat_mismatch_perc), stringsAsFactors=FALSE)  #percentage dataframe
+  colnames(freqtable) = unlist(strsplit(a_probe_seq, "" ))
+  print(freqtable)
+  return(freqtable)
+} 
+```
+
+####variant metadata table
+```{r}
+### description of variants at https://en.wikipedia.org/wiki/Variants_of_SARS-CoV-2
+metadatav = read.delim("~/Downloads/ GISAID/metadata.tsv", stringsAsFactors = FALSE)
+
+head(metadatav)
+colnames(metadatav)
+
+
+unique(metadatav$Pango.lineage)
+
+length(metadatav$Pango.lineage[grep("B\\.1\\.1\\.7$",  metadatav$Pango.lineage )]) #UK variant
+length((metadatav$Pango.lineage)[grep("B\\.1\\.351$",  metadatav$Pango.lineage )]) #South african
+
+
+```
+
+## function to select data using variant (use data_gisaid_sel)
+```{r}
+
+
+selectvariant = function(variant, data){
+  variant = variant
+  data = data
+  variantid = metadatav$Accession.ID[which(metadatav$Pango.lineage  == variant )]
+  
+  dateindex = which(metadata$id %in% variantid ) # 30 or 31 depending on the month
+
+#dateindex2 = which(metadata$names=="hCoV-19/Wuhan/WIV04/2019") # representative of first isolate
+dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+#dateindex2 = which(metadata$names=="hCoV-19/England/CAMC-B07C46/2020") # representative of first isolate
+
+dataindex3 = c(dateindex2, dateindex)
+
+data_gisaid_sel3 = data[dataindex3,] ## contains the selected sequences
+length(names(data_gisaid_sel3))
+
+#data_gisaid_sel1 = data_gisaid[dataindex3,] # not sure why I kept this , will see it in my code downstream
+#length(names(data_gisaid_sel))
+
+return(data_gisaid_sel3 )
+}
+
+
+```
+
+
+
+#### Load MSA and select sequences
+```{r echo=TRUE}
+
+data_gisaid = readDNAStringSet("~/Downloads/ GISAID/msa_0410/msa_0410.fasta")
+class(data_gisaid)
+
+
+probes_fa <- data.frame(seqs=readDNAStringSet("~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject_sept2020/probes/ProbesMay2020_revComp.fa"))
+
+##directory where the images are going to be saved
+DIR_NAME = "~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject_sept2020/logos/logos"
+```
+
+### checking genome width 
+```{r echo=TRUE}
+
+## first step is to double check that all genomes are complete by looking at the genome length, outliers are removed in order to keep only complete genome
+genomewidth = width(data_gisaid)
+length(genomewidth)
+genomenames = names(data_gisaid)
+genomewidth = width(data_gisaid)
+hist(genomewidth)
+table(genomewidth)
+gw = as.data.frame(table(genomewidth), stringsAsFactors=FALSE)
+gwv = as.numeric(gw$genomewidth[which(gw$Freq == max(gw$Freq))])
+data_gisaid = data_gisaid[(which(genomewidth == gwv  )),]  
+```
+
+### building metadata 
+```{r echo=TRUE}
+# this step is the same as the one above to make sure only complete genome were kept
+genomewidth <- width(data_gisaid)
+hist(genomewidth)
+length(genomewidth)
+table(genomewidth)
+
+## building metadata (split the sequence header as a dataframe with multiple columns)
+genomenames = names(data_gisaid)
+tail(genomenames)
+metadata <- data.frame(do.call('rbind', strsplit(as.character(genomenames),'|',fixed=TRUE)))
+colnames(metadata) = c("names", "id", "dates", "origin")
+genomenames = names(data_gisaid)
+metadata$dates <- as.Date(metadata$dates, format= "%Y-%m-%d")
+class(metadata$dates)
+head(metadata)
+
+```
+
+#### data index: metadata can now be used to select sequences of interest, we are going to put one ref genome as first sequence *WIVO4 was not working so I choose another one that I used already for October report  #112196
+```{r echo=TRUE}
+
+data_gisaid_sel = selectdata(dstart="2021-03-01",  dend="2021-03-31", data=data_gisaid)
+data_gisaid_sel1 = data_gisaid_sel
+#write this selected sequences to local computer , observe the MSA in UGene and trim full gap column using trimal
+writeXStringSet(data_gisaid_sel, '/Users/veroniquevoisin/Downloads/data_gisaid.fa') #
+```
+
+##run trimal (you need first to install trimal on your computer, copy the fasta file into the source directory (it is a bash script, it is run on the local computer)
+```{bash echo=TRUE}
+cp  /Users/veroniquevoisin/Downloads/data_gisaid.fa /Applications/trimAl/source/ ;
+cd /Applications/trimAl/source/ ;
+#./trimal -in data_gisaid.fa -out msa_nogap.fa -noallgaps ; # it takes a while to run
+./trimal -in data_gisaid.fa -out msa_nogap0_9.fa -gt 0.9 ; # all gaps only left a gap in RDRP reverse primer, so i reduce to remove all columns with 90% of gaps., need to run all gaps first and if that does not work reduce to 0.9
+
+```
+
+##reimport trimmed msa
+```{r echo=TRUE}
+data_gisaid_sel = readDNAStringSet("/Applications/trimAl/source/msa_nogap0_9.fa")
+```
+
+```{r echo=TRUE}
+#data_gisaid_sel = selectcountry(data = data_gisaid_sel, country="England")
+```
+
+## remove the data that we save in the trimmal source folder to keep it clean and save storage space (it is a bash script, it is run on the local computer)
+```{bash}
+rm /Applications/trimAl/source/data_gisaid.fa ;
+rm /Applications/trimAl/source/msa_nogap.fa ;
+```
+
+
+
+
+##redoing the metadata based only on the selected sequences
+```{r echo=TRUE}
+genomewidth <- width(data_gisaid_sel)
+gwv = genomewidth
+hist(genomewidth)
+length(genomewidth)
+table(genomewidth)
+genomenames = names(data_gisaid_sel)
+tail(genomenames)
+metadata <- data.frame(do.call('rbind', strsplit(as.character(genomenames),'|',fixed=TRUE)))
+head(metadata)
+colnames(metadata) = c("names", "id", "dates", "origin")
+
+metadata$origin = gsub( paste0(" ", gwv, " bp"), ""   ,  metadata$origin, perl=TRUE )
+
+metadata$country = metadata$names
+metadata$country = gsub("hCoV-19/", "", metadata$country)
+metadata$country = gsub("/.*", "", metadata$country)
+metadata$country
+```
+
+### Quality control plots
+```{r}
+
+date = Sys.Date()
+quarter= "mar2021"
+
+#pdf(paste0(dir_name, "/gsaid_quality_controls_",  quarter, "_", date, ".pdf"), width = 10, height = 10)
+par(mfrow= c(2,2))
+## frequency plot before removing all gap columns
+#freq <- alphabetFrequency(data_gisaid_sel1, as.prob = T,baseOnly=T)
+#freq <- alphabetFrequency(data_gisaid_sel1)
+#hist(freq[, 15], breaks=100, col="seagreen", main="freq of N")#N
+#hist(freq[, 16], breaks=100, col="orchid4", main="freq of -")#N
+#table(freq[, 15])
+
+## frequency plot after removing all gap columns (N does not change but "-" is null)
+freq <- alphabetFrequency(data_gisaid_sel, as.prob = T,baseOnly=T)
+freq <- alphabetFrequency(data_gisaid_sel)
+hist(freq[, 15], breaks=100, col="seagreen", main="freq of N")#N
+hist(freq[, 16], breaks=100, col="orchid4", main="freq of -")#N
+#table(freq[, 15])
+#dev.off()
+
+
+#pdf(paste0(dir_name, "/gsaid_quality_controlsV2_",  quarter, "_", date, ".pdf"), width = 10, height = 10)
+
+## origin of sequences
+originedf =  as.data.frame(table(metadata$origin))
+colnames(originedf) = c("countries", "frequencies")
+p1  = ggplot(originedf, aes(x=reorder(countries, -frequencies), y=frequencies, fill=countries)) + 
+  geom_bar(stat = "identity") + scale_color_brewer(palette="Dark2") + theme(axis.text.x = element_text(angle = 90) ,text = element_text(size=10))
+length(names(data_gisaid_sel))
+
+
+originedf =  as.data.frame(table(metadata$country))
+colnames(originedf) = c("countries", "frequencies")
+originedf = originedf[order(originedf$frequencies, decreasing=TRUE) , ]
+originedf = originedf[1:20,]
+p2 = ggplot(originedf, aes(x=reorder(countries, -frequencies), y=frequencies, fill=countries)) + 
+  geom_bar(stat = "identity") + scale_color_brewer(palette="Dark2") + theme(axis.text.x = element_text(angle = 90) ,text = element_text(size=10))
+length(names(data_gisaid_sel))
+
+print(gridExtra::grid.arrange( p1, p2, ncol=1,nrow=2))
+
+#dev.off()
+```
+
+## sliding window N and "-" (it takes a while to run) (graphics will be displayed below and also stored in a folder, see code)
+```{r}
+### the purpose is to locate regions with higher number of N (ambiguous nucleotides) or - (gaps)
+
+source("~/Dropbox (Bader Lab)/Veronique Voisin's files/covid19/covidproject_sept2020/codes/windowslide.R")
+## sliding window
+
+###
+#orig <- data_gisaid
+#quarter ="november"
+#orig2 = "GISAID"
+#myletter = "N"
+#slidingwindow(orig, quarter, orig2, myletter)
+#myletter = "-"
+#slidingwindow(orig, quarter, orig2, myletter)
+
+### do it on selected sequences only
+orig <- data_gisaid_sel
+quarter ="november"
+orig2 = "GISAIDsel"
+myletter = "N"
+slidingwindow(orig, quarter, orig2, myletter)
+myletter = "-"
+slidingwindow(orig, quarter, orig2, myletter)
+
+
+
+```
+
+
+
+
+
+#### creating logos and  heatmap of mismatch counts
+```{r echo=TRUE}
+#### parameters
+date = "Apr11_2021"
+data_gisaid_sel = readDNAStringSet("/Applications/trimAl/source/msa_nogap0_9.fa")
+data=data_gisaid_sel
+quarter= "mar2021"
+country = "all"
+##country = "england"
+variant = "all"
+
+#### checking probe coordinations
+probe_start_end_indices = get_start_end_indices(data, probes_fa)
+probe_start_end_indices.df <- get_start_end_df(probe_start_end_indices) ### look inside the object probe_start_end_indices.df to see if you have a start and an end of all probes in case this part of the code does not give you expected results , that would indicate an issue with the alignment. 
+prob_names = rownames(probe_start_end_indices.df)
+
+## creating a directory to store the images, DIR_NAME was set at the beginning
+dir_name = paste0(DIR_NAME, "GISAID", quarter, "_", country, "_", variant)
+dir.create(dir_name)
+
+
+## beginning of a for loop that will create logos for each probe sequence, 8 probes
+for(i in 1:nrow(probes_fa)){
+
+ 
+  # getting name of probe and probe sequence to be tested
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  
+  cons_mat <- get_cons_mat(i, prob_names,probe_start_end_indices.df)
+  cons_mat_mismatch = remove_probe_seq(cons_mat, a_probe_seq)
+  cons_mat_mismatch_perc = get_perc(cons_mat_mismatch, rowSums(cons_mat))
+  cons_mat_mismatch_perc$position=rownames(cons_mat_mismatch_perc)
+  
+  freqtable = as.data.frame(t(cons_mat_mismatch_perc), stringsAsFactors=FALSE)  #percentage dataframe
+  colnames(freqtable) = unlist(strsplit(a_probe_seq, "" ))
+  assign(paste0("freqtable", "_",  a_probe_name)  , freqtable)
+    
+  freqtable2 = as.data.frame(t(cons_mat_mismatch ), stringsAsFactors=FALSE)  #count dataframe
+  colnames(freqtable2) = unlist(strsplit(a_probe_seq, "" ))
+
+  
+   #write.csv(freqtable, 
+   #           paste0(dir_name,'/',a_probe_name,  "_mismatch_perc_table_ncbi.csv"), quote = F,  row.names = T)
+  
+  
+    cons_mat_mismatch_perc$position <- factor(cons_mat_mismatch_perc$position, 
+                                            cons_mat_mismatch_perc$position)
+  
+    cons_mat_mismatch_perc_m = melt(cons_mat_mismatch_perc)
+  
+    colnames(cons_mat_mismatch_perc_m) = c('position', 'nucleotide', 'Frequency')
+  
+    # logo of the original sequence
+    p1=ggseqlogo(a_probe_seq)+ylab('')+ggtitle(a_probe_name)+
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0,         size=18, face = "bold"))+xlab('')+ylab('')
+  
+     # logo of the mismatch , generated only if there are mismatches
+    if (sum(t(cons_mat_mismatch)) == 0) {
+     p2 =ggplot()+ ggtitle("no mismatch") 
+    } else {
+     p2=ggseqlogo(t(cons_mat_mismatch),method='p', namespace=c('A', 'C', 'G', 'T','N','H'), col_scheme = color_palette)+
+    # + ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) ) +
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,     size=12, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('')+xlab('')
+    }
+    
+
+    # barplot of the mismatch percentages
+    p3=ggplot(cons_mat_mismatch_perc_m)+
+    geom_bar(aes(x=position, y=Frequency, fill=nucleotide), stat="identity")+
+    theme_classic() + 
+    #ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) )+
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,      size=12, face = "bold"),legend.position = "none",
+    plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('Percentage')+
+    scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+xlab('')
+  
+    ##########p4
+    
+   data_gisaid_week1 = selectdata(dstart="2021-03-01", dend ="2021-03-14", data = data_gisaid_sel)
+      length(names(data_gisaid_week1))
+writeXStringSet(data_gisaid_week1, '/Users/veroniquevoisin/Downloads/data_gisaid_week1.fa') #
+   data_gisaid_week4 = selectdata(dstart="2021-03-15", dend ="2021-03-31", data = data_gisaid_sel)
+   length(names(data_gisaid_week4))
+    identical(data_gisaid_week1, data_gisaid_week4 )
+  
+ data=data_gisaid_week1
+ week1feqtable = freqfunction(data, i=i)
+ data=data_gisaid_week4
+ week4feqtable = freqfunction(data, i=i)
+ identical(week1feqtable,week4feqtable )
+ position= week4feqtable[nrow(week4feqtable),]
+ difffeqtable =   data.matrix(week4feqtable[-nrow(week4feqtable),]) /     data.matrix(week1feqtable[-nrow(week1feqtable),] )
+ difffeqtable2 =  data.matrix(week4feqtable[-nrow(week4feqtable),]) - data.matrix(week1feqtable[-nrow(week1feqtable),])
+ print(difffeqtable)
+ dim(difffeqtable)
+ print(difffeqtable2)
+ difffeqtable = as.data.frame(difffeqtable)
+ difffeqtable[freqtable[ -(nrow(freqtable)), ] < 0.03] <- 0.000000000001
+
+  cons_mat_mismatch_perc = as.data.frame( t(difffeqtable[c(1:4),]), stringAsFactors=FALSE)
+  cons_mat_mismatch_perc$position = as.list(position[1,])
+  cons_mat_mismatch_perc$position <- factor(cons_mat_mismatch_perc$position, 
+                                            cons_mat_mismatch_perc$position)
+  
+  cons_mat_mismatch_perc_m = melt(cons_mat_mismatch_perc)
+  
+  colnames(cons_mat_mismatch_perc_m) = c('position', 'nucleotide', 'Frequency')
+    
+    
+    p4=ggplot(cons_mat_mismatch_perc_m)+
+    geom_bar(aes(x=position, y=Frequency, fill=nucleotide), stat="identity")+
+    theme_classic() + 
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,      size=12, face =  "bold"),legend.position = "none",
+    plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('ratio wk4/wk1')+
+    scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+xlab('')  + geom_hline(yintercept=1)
+    
+    
+   
+    
+    ##########
+    
+   #printing the graphs for each probe 
+   pdf(paste0(dir_name, "/gsaid_", a_probe_name, quarter, date, country , variant,".pdf"),width = 10, height = 10)
+
+    print(gridExtra::grid.arrange( p1, p2, p3, p4,  ncol=1,nrow=5))
+
+    dev.off()  
+    
+
+    ### heatmap of counts saved as image
+    pdf(paste0(dir_name, "/gsaid_", a_probe_name, quarter, country ,variant, "heatmap.pdf"),width = 8, height = 4)
+    if (sum(t(cons_mat_mismatch)) == 0) {
+    p =ggplot()+ ggtitle("no mismatch")
+    print(p)
+    } else {
+     p=pheatmap(  freqtable2, display_numbers = T, color = colorRampPalette(c('white','red'))(99), cluster_rows = F,        cluster_cols = F, fontsize_number = 10, number_format = "%1.0f")
+    }
+    dev.off()
+
+   
+} # end of for loop
+
+
+
+
+ 
+```
+
+
+### further select data based on country or variant
+```{r}
+data_gisaid_sel_UKv = selectvariant(variant = "B.1.1.7", data = data_gisaid_sel)
+data_gisaid_sel_SAv = selectvariant(variant = "B.1.351", data = data_gisaid_sel)
+
+UK = length(data_gisaid_sel_UKv)
+SA = length(data_gisaid_sel_SAv)
+other = length(data_gisaid_sel)- (length(data_gisaid_sel_UKv) + length(data_gisaid_sel_SAv))
+
+df = data.frame(rbind( 
+  c("UKvar", UK),
+ c("SAvar", SA),
+ c("other", other)
+))
+colnames(df) = c("group", "value")
+
+library(ggplot2)
+# Barplot
+bp<- ggplot(df, aes(x="", y=value, fill=group))+
+geom_bar(width = 1, stat = "identity")
+bp
+pie <- bp + coord_polar("y", start=0)
+pie
+```
+
+#### VARIANT creating logos and  heatmap of mismatch counts
+```{r echo=TRUE}
+
+
+#### parameters
+date = "Apr11_2021"
+data=data_gisaid_sel
+quarter= "mar2021"
+country = "all"
+
+data_gisaid_sel = readDNAStringSet("/Applications/trimAl/source/msa_nogap0_9.fa")
+data = data_gisaid_sel_UKv
+data_gisaid_sel = data_gisaid_sel_UKv
+variant = "B.1.1.7" # UK
+
+#data_gisaid_sel = readDNAStringSet("/Applications/trimAl/source/msa_nogap0_9.fa")
+#data = data_gisaid_sel_SAv
+#data_gisaid_sel = data_gisaid_sel_SAv
+#variant = "B.1.351" # SA
+
+
+#### checking probe coordinations
+probe_start_end_indices = get_start_end_indices(data, probes_fa)
+probe_start_end_indices.df <- get_start_end_df(probe_start_end_indices) ### look inside the object probe_start_end_indices.df to see if you have a start and an end of all probes in case this part of the code does not give you expected results , that would indicate an issue with the alignment. 
+prob_names = rownames(probe_start_end_indices.df)
+
+## creating a directory to store the images, DIR_NAME was set at the beginning
+dir_name = paste0(DIR_NAME, "GISAID", quarter, "_", country, "_", variant)
+dir.create(dir_name)
+
+pdf(paste0(dir_name, "/gsaid_", quarter, date, country , variant,"_variant_pie_chart.pdf"),width = 10, height = 10)
+pie
+dev.off()
+
+## beginning of a for loop that will create logos for each probe sequence, 8 probes
+for(i in 1:nrow(probes_fa)){
+
+ 
+  # getting name of probe and probe sequence to be tested
+  a_probe_name = prob_names[i]
+  a_probe_seq = probes_fa$seqs[rownames(probes_fa) == a_probe_name]
+  
+  cons_mat <- get_cons_mat(i, prob_names,probe_start_end_indices.df)
+  cons_mat_mismatch = remove_probe_seq(cons_mat, a_probe_seq)
+  cons_mat_mismatch_perc = get_perc(cons_mat_mismatch, rowSums(cons_mat))
+  cons_mat_mismatch_perc$position=rownames(cons_mat_mismatch_perc)
+  
+  freqtable = as.data.frame(t(cons_mat_mismatch_perc), stringsAsFactors=FALSE)  #percentage dataframe
+  colnames(freqtable) = unlist(strsplit(a_probe_seq, "" ))
+  assign(paste0("freqtable", "_",  a_probe_name)  , freqtable)
+    
+  freqtable2 = as.data.frame(t(cons_mat_mismatch ), stringsAsFactors=FALSE)  #count dataframe
+  colnames(freqtable2) = unlist(strsplit(a_probe_seq, "" ))
+
+  
+   #write.csv(freqtable, 
+   #           paste0(dir_name,'/',a_probe_name,  "_mismatch_perc_table_ncbi.csv"), quote = F,  row.names = T)
+  
+  
+    cons_mat_mismatch_perc$position <- factor(cons_mat_mismatch_perc$position, 
+                                            cons_mat_mismatch_perc$position)
+  
+    cons_mat_mismatch_perc_m = melt(cons_mat_mismatch_perc)
+  
+    colnames(cons_mat_mismatch_perc_m) = c('position', 'nucleotide', 'Frequency')
+  
+    # logo of the original sequence
+    p1=ggseqlogo(a_probe_seq)+ylab('')+ggtitle(a_probe_name)+
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0,         size=18, face = "bold"))+xlab('')+ylab('')
+  
+     # logo of the mismatch , generated only if there are mismatches
+    if (sum(t(cons_mat_mismatch)) == 0) {
+     p2 =ggplot()+ ggtitle("no mismatch") 
+    } else {
+     p2=ggseqlogo(t(cons_mat_mismatch),method='p', namespace=c('A', 'C', 'G', 'T','N','H'), col_scheme = color_palette)+
+    # + ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) ) +
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,     size=12, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('')+xlab('')
+    }
+    
+
+    # barplot of the mismatch percentages
+    p3=ggplot(cons_mat_mismatch_perc_m)+
+    geom_bar(aes(x=position, y=Frequency, fill=nucleotide), stat="identity")+
+    theme_classic() + 
+    #ggtitle(paste0('probe: ',a_probe_name), subtitle=paste0('seq: ',a_probe_seq) )+
+    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,      size=12, face = "bold"),legend.position = "none",
+    plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('Percentage')+
+    scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+xlab('')
+  
+
+   
+    
+    ##########
+    
+   #printing the graphs for each probe 
+   pdf(paste0(dir_name, "/gsaid_", a_probe_name, quarter, date, country , variant,".pdf"),width = 10, height = 10)
+
+    print(gridExtra::grid.arrange( p1, p2, p3,  ncol=1,nrow=5))
+
+    dev.off()  
+    
+
+    ### heatmap of counts saved as image
+    pdf(paste0(dir_name, "/gsaid_", a_probe_name, quarter, country ,variant, "heatmap.pdf"),width = 8, height = 4)
+    if (sum(t(cons_mat_mismatch)) == 0) {
+    p =ggplot()+ ggtitle("no mismatch")
+    print(p)
+    } else {
+     p=pheatmap(  freqtable2, display_numbers = T, color = colorRampPalette(c('white','red'))(99), cluster_rows = F,        cluster_cols = F, fontsize_number = 10, number_format = "%1.0f")
+    }
+    dev.off()
+
+   
+} # end of for loop
+
+
+
+
+ 
+```
+
+
