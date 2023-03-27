@@ -1,6 +1,6 @@
 # Chan-Covid19
 
-##Chan-Covid19
+## Chan-Covid19
  * Code for Chan-Bader lab collaboration for Covid-19 research. 
  * Mutation frequency in probe regions used for SARS-CoV-2 detection assay.
 
@@ -32,3 +32,8 @@ README
     * get the matrix of all sequences using the start and end coordinates
     * produce the confusion matrix which counts the frequency of mutation per nucleotide position
     * create a heatmap of the confusion matrix
+
+ ## code
+  * code is in R (3.5.0) and can be run using RStudio or R.
+  * one part of the code is a bash command to run trimAl which has to be installed locally.
+  
