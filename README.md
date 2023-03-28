@@ -30,6 +30,6 @@ Aknowledgements to: Ruth Isserlin, Shirley Hui, Maria Abou Chakra, Zoe Clarke.
     * create a heatmap of the confusion matrix
 
  ## code
-  * code is in R (3.5.0) and can be run using RStudio or R.
+  * code is in R (tested with 4.1.2) and can be run using RStudio or R.
   * one part of the code is a bash command to run trimAl which has to be installed locally.
   
