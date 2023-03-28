@@ -546,50 +546,6 @@ for(i in 1:nrow(probes_fa)){
     plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('Percentage')+
     scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+xlab('')
   
-    ##########p4
-    
-#   data_gisaid_week1 = selectdata(dstart="2021-02-01", dend ="2021-02-07", data = data_gisaid_sel)
-#   length(names(data_gisaid_week1))
-#writeXStringSet(data_gisaid_week1, '/Users/veroniquevoisin/Downloads/data_gisaid_week1.fa') #
-#   data_gisaid_week4 = selectdata(dstart="2021-02-23", dend ="2021-02-28", data = data_gisaid_sel)
-#   length(names(data_gisaid_week4))
-#    identical(data_gisaid_week1, data_gisaid_week4 )
-  
-# data=data_gisaid_week1
-# week1feqtable = freqfunction(data, i=i)
-# data=data_gisaid_week4
-# week4feqtable = freqfunction(data, i=i)
-# identical(week1feqtable,week4feqtable )
-# position= week4feqtable[nrow(week4feqtable),]
-# difffeqtable =   data.matrix(week4feqtable[-nrow(week4feqtable),]) /     data.matrix(week1feqtable[-nrow(week1feqtable),] )
-# difffeqtable2 =  data.matrix(week4feqtable[-nrow(week4feqtable),]) - data.matrix(week1feqtable[-nrow(week1feqtable),])
-# print(difffeqtable)
-# dim(difffeqtable)
-# print(difffeqtable2)
- #difffeqtable = as.data.frame(difffeqtable)
-# difffeqtable[freqtable[ -(nrow(freqtable)), ] < 0.03] <- 0.000000000001
-
- # cons_mat_mismatch_perc = as.data.frame( t(difffeqtable[c(1:4),]), stringAsFactors=FALSE)
-#  cons_mat_mismatch_perc$position = as.list(position[1,])
-#  cons_mat_mismatch_perc$position <- factor(cons_mat_mismatch_perc$position, 
-#                                            cons_mat_mismatch_perc$position)
-  
-#  cons_mat_mismatch_perc_m = melt(cons_mat_mismatch_perc)
-  
-#  colnames(cons_mat_mismatch_perc_m) = c('position', 'nucleotide', 'Frequency')
-    
-    
- #   p4=ggplot(cons_mat_mismatch_perc_m)+
-#    geom_bar(aes(x=position, y=Frequency, fill=nucleotide), stat="identity")+
- #   theme_classic() + 
-#    theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=20),plot.title = element_text(hjust = 0.5,      size=12, face =  "bold"),legend.position = "none",
-#    plot.subtitle = element_text(hjust = 0.5, color = "blue"))+ylab('ratio wk4/wk1')+
-#    scale_fill_manual(breaks = color_palette$letter, values=color_palette$col)+xlab('')  + geom_hline(yintercept=1)
-    
-    
-   
-    
-    ##########
     
    #printing the graphs for each probe 
    pdf(paste0(dir_name, "/gsaid_", a_probe_name, quarter, date, country , variant,".pdf"),width = 10, height = 10)
